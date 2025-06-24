@@ -1,0 +1,30 @@
+{
+  "name": "General development container",
+  "image": "mcr.microsoft.com/devcontainers/universal:linux",
+  "hostRequirements": {
+      // Default is 2 cores/8 GB memory
+      "cpus": 2,
+      "memory": "8gb"
+  },
+  "features": {
+      "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+  },
+  "waitFor": "onCreateCommand",
+  "updateContentCommand": {
+      "update-system": "sudo apt-get -qq update && sudo apt-get -qq install --no-install-recommends -y vim"
+  },
+  "customizations": {
+      "codespaces": {
+          "openFiles": ["README.md"]
+      },
+      "vscode": {
+          "extensions": [
+              // Common extensions
+              "esbenp.prettier-vscode",
+              "github.vscode-github-actions",
+              "redhat.vscode-yaml",
+              "TheNuProjectContributors.vscode-nushell-lang"
+          ]
+      }
+  }
+}
