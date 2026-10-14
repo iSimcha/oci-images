@@ -1,0 +1,82 @@
+---
+# Build and test the Debian and Alpine base images; publish them to GHCR from main.
+name: Build base images
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "base/**"
+      - ".github/workflows/build-base.yml"
+  pull_request:
+    paths:
+      - "base/**"
+      - ".github/workflows/build-base.yml"
+  workflow_dispatch: {}
+
+# A newer push supersedes an in-flight build, since both would publish the same tag.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.distro }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        distro:
+          - debian
+          - alpine
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Nushell
+        uses: hustcer/setup-nu@95cd3bfe252450ef7d35dd9a7ddecf3484341134 # v3.28
+        with:
+          version: "0.112.2"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build ${{ matrix.distro }}
+        id: build
+        shell: nu {0}
+        run: ./base/build.nu ${{ matrix.distro }}
+
+      - name: Test ${{ matrix.distro }}
+        shell: nu {0}
+        run: ./base/test.nu ${{ matrix.distro }}
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push ${{ matrix.distro }} to GHCR
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        shell: nu {0}
+        env:
+          IMAGE: ${{ steps.build.outputs.image }}
+          TAG: ${{ steps.build.outputs.tags }}
+        run: |
+          # GHCR rejects upper-case owners.
+          let owner = ($env.GITHUB_REPOSITORY_OWNER | str downcase)
+          let remote = $"ghcr.io/($owner)/($env.IMAGE):($env.TAG)"
+          ^docker tag $"($env.IMAGE):($env.TAG)" $remote
+          ^docker push $remote
+          print $"Pushed ($remote)"

@@ -1,0 +1,252 @@
+---
+# Debian and Alpine base images with the iSimcha CLI tools and secret scanners.
+# Tool sources: iSimcha/devcontainer-features (dev-shell packages.json, dev-tools, check-secrets.yml)
+# and iSimcha/common (.scripts/packages.json, common.just).
+
+debian:
+  # https://hub.docker.com/_/debian
+  image: docker.io/library/debian
+  tag: "13-slim"
+  version: "13"
+
+alpine:
+  # https://hub.docker.com/_/alpine
+  image: docker.io/library/alpine
+  tag: "3.24"
+  version: "3.24"
+
+published:
+  # Tag: <version>-<distro>-<distro version>, e.g. v1.0.0-alpine-3.24. Bump when any layer changes.
+  version: v1.0.0
+  debian:
+    name: debian-base
+  alpine:
+    name: alpine-base
+
+# Nushell runs setup.nu, so the Dockerfile installs it before anything else. The static musl
+# build runs on both distros. Every nu_plugin_* in the archive is installed alongside it.
+nushell:
+  version: "0.112.2"
+  filename: nu-0.112.2-x86_64-unknown-linux-musl.tar.gz
+  # From the release's SHA256SUMS.
+  sha256: d9c0ba0938beed6148c8a354c45612c0979d7a787794b8dd13e866ca3b571375
+
+# OS packages. tar, xz and unzip unpack the release archives below.
+packages:
+  debian:
+    - bash
+    - ca-certificates
+    - curl
+    - git
+    - jq
+    - openssh-client
+    - sudo
+    - tar
+    - unzip
+    - xz-utils
+  alpine:
+    - bash
+    - ca-certificates
+    - curl
+    - git
+    - jq
+    - openssh-client
+    - sudo
+    - tar
+    - unzip
+    - xz
+    # useradd, matching Debian; busybox only has adduser.
+    - shadow
+    # Node 24 LTS. Debian 13 ships Node 20, too old for cspell and claude-code (both need >= 22).
+    - nodejs
+    - npm
+    # The bun musl build links libstdc++ and libgcc.
+    - libgcc
+    - libstdc++
+
+# Debian installs Node from nodejs.org, since its own nodejs package is 20.x.
+node:
+  version: v24.21.0
+  filename: node-v24.21.0-linux-x64.tar.xz
+  # From https://nodejs.org/dist/v24.21.0/SHASUMS256.txt
+  sha256: fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6
+
+# npm globals, from dev-tools (cspell, claude-code) and common/prettier (prettier).
+npm:
+  - package: "@anthropic-ai/claude-code"
+    version: "2.1.300"
+    commands: [claude]
+  - package: cspell
+    version: "10.4.0"
+    commands: [cspell]
+  - package: prettier
+    version: "3.9.10"
+    commands: [prettier]
+
+# Commands from the OS packages that test.nu checks. args defaults to [--version].
+os_commands:
+  - command: bash
+  - command: curl
+  - command: git
+  - command: jq
+  - command: node
+  - command: npm
+  - command: ssh
+    args: [-V]
+  - command: sudo
+
+# Single-file binaries. Each entry is a release asset:
+#   url       defaults to https://github.com/{repo}/releases/download/{version}/{filename}
+#   sha256    of the downloaded file; a mismatch or a missing value fails the build
+#   raw       true when the asset is the binary itself, saved as commands.0
+#   commands  the files installed into /usr/local/bin; each must exist in the archive
+#   args      version check test.nu runs per command, default [--version]
+#   alpine    overrides for the Alpine image: a different asset, or `package` to install the
+#             distro package instead of the release asset (version then follows the distro)
+# Unless noted, versions and sha256 match devcontainer-features src/dev-shell/packages.json.
+binaries:
+  # Secret scanners, at the versions check-secrets.yml runs.
+  - repo: mongodb/kingfisher
+    version: v2.11.1
+    filename: kingfisher-linux-x64.tgz
+    sha256: 84e4a4c45814f05e80aa8eee768e5170d758736fa116ffaf03565da4d5a77447
+    commands: [kingfisher]
+  - repo: trufflesecurity/trufflehog
+    version: v3.99.2
+    filename: trufflehog_3.99.2_linux_amd64.tar.gz
+    sha256: 3c7b0d1dc4278294269bfdd7594bca8bb28c78da0a4a06ad202ded37b48deca4
+    commands: [trufflehog]
+  - repo: praetorian-inc/noseyparker
+    version: v0.24.0
+    filename: noseyparker-v0.24.0-x86_64-unknown-linux-musl.tar.gz
+    sha256: 013b06f1f29271150585cb35d2a150929871126f51715744714ad5843179f57c
+    commands: [noseyparker]
+  - repo: praetorian-inc/titus
+    version: v1.2.11
+    filename: titus-linux-amd64
+    sha256: c3c5bc8dccdc59cc1583384b28bf9d85c9fb93f7f758e665440e7d296dac351b
+    raw: true
+    commands: [titus]
+    args: [version]
+
+  # Shared CLI tools.
+  - repo: ouch-org/ouch
+    version: "0.5.1"
+    filename: ouch-x86_64-unknown-linux-musl.tar.gz
+    # The release publishes no checksum; hash of the download (dev-shell install.sh pins only the version).
+    sha256: ae03bf5b7510794c4e784d63aeb81acb72b68086160969c9baad798564e94608
+    commands: [ouch]
+  - repo: BurntSushi/ripgrep
+    version: "14.1.1"
+    filename: ripgrep-14.1.1-x86_64-unknown-linux-musl.tar.gz
+    sha256: 4cf9f2741e6c465ffdb7c26f38056a59e2a2544b51f7cc128ef28337eeae4d8e
+    commands: [rg]
+  - repo: astral-sh/uv
+    version: "0.12.17"
+    filename: uv-x86_64-unknown-linux-musl.tar.gz
+    sha256: 6401c4665d8fa2a9893e087c91f585430738e3170f5398a1141483efb4a93310
+    commands: [uv, uvx]
+  # Required by common.just check-linting. From the release's .sha256 file.
+  - repo: astral-sh/ruff
+    version: "0.17.0"
+    filename: ruff-x86_64-unknown-linux-musl.tar.gz
+    sha256: 0df9421fd0df9aa7a62dab4d1086e085b7c7888b6343fc5a9c5f630771d61aae
+    commands: [ruff]
+  - repo: biomejs/biome
+    version: "@biomejs/biome@2.5.14"
+    filename: biome-linux-x64-musl
+    sha256: d15a39b256ca1294fe8f8817f9162f7c26229ca0cb8bd19d0369540c1a01d781
+    raw: true
+    commands: [biome]
+  - repo: caddyserver/caddy
+    version: v2.9.1
+    filename: caddy_2.9.1_linux_amd64.tar.gz
+    sha256: 0542edbb5ce0d6987de6a37caa2bbc52a42445ec094fb9ba3e605534af5dd898
+    commands: [caddy]
+    args: [version]
+  - repo: casey/just
+    version: "1.38.0"
+    filename: just-1.38.0-x86_64-unknown-linux-musl.tar.gz
+    sha256: c803e67fd7b0af01667bd537197bc3df319938eacf9e8d51a441c71d03035bb5
+    commands: [just]
+  - repo: d2lang/d2
+    version: v0.9.0
+    filename: d2-v0.9.0-linux-amd64.tar.gz
+    sha256: 5669ddc46b99e942cc96078f4a4e36d5e62103348f4c05179ede27802fdd87a9
+    commands: [d2]
+  - repo: ducaale/xh
+    version: v0.23.1
+    filename: xh-v0.23.1-x86_64-unknown-linux-musl.tar.gz
+    sha256: a29ed6afcabf2c575c24499397fa3a840047dffc4a68e4a1a886f22584712946
+    commands: [xh]
+  - repo: hairyhenderson/gomplate
+    version: v4.3.0
+    filename: gomplate_linux-amd64
+    sha256: 8adb82e5be7dfde49857ebd7c948fd8f9b10cdcdb13f71b74685dff6e6756890
+    raw: true
+    commands: [gomplate]
+  - repo: mikefarah/yq
+    version: v4.45.1
+    filename: yq_linux_amd64
+    sha256: 654d2943ca1d3be2024089eb4f270f4070f491a0610481d128509b2834870049
+    raw: true
+    commands: [yq]
+  - repo: oven-sh/bun
+    version: bun-v1.3.5
+    filename: bun-linux-x64.zip
+    sha256: 7051d86a924aefea3e0b96213b5fd8f79c0793f9cae6534233e627e5c3db4669
+    commands: [bun]
+    # The default build links glibc. From the release's SHASUMS256.txt.
+    alpine:
+      filename: bun-linux-x64-musl.zip
+      sha256: 720d88e0e5f40450a1da91c0226f626b156eaa224876d794fa95f6ebf74f46b6
+  - repo: pandoras-box/forgejo-cli
+    version: v0.17.0
+    url: https://dev.a8n.run/api/packages/pandoras-box/generic/forgejo-cli/v0.17.0/fj-linux-x86_64-static
+    filename: fj-linux-x86_64-static
+    sha256: 3ac8334b29d7912816e940e160f3e0240be68e81760ed9b91d09cbe6ada52628
+    raw: true
+    commands: [fj]
+    args: [version]
+  - repo: pandoras-box/youtrack-cli
+    version: v0.16.0
+    url: https://dev.a8n.run/api/packages/pandoras-box/generic/youtrack-cli/v0.16.0/yt-linux-x86_64
+    filename: yt-linux-x86_64
+    sha256: 671b634e0e01495f68a5a7b378872acaa5f9c58ed73c77f2dd930abfc70dfdd3
+    raw: true
+    commands: [yt]
+  - repo: sharkdp/fd
+    version: v10.2.0
+    filename: fd-v10.2.0-x86_64-unknown-linux-musl.tar.gz
+    sha256: d9bfa25ec28624545c222992e1b00673b7c9ca5eb15393c40369f10b28f9c932
+    commands: [fd]
+  - repo: starship/starship
+    version: v1.22.1
+    filename: starship-x86_64-unknown-linux-musl.tar.gz
+    sha256: 62c91b5ecc7f8c8c6ea7ffea42a98bd2e6a2d29daf61562fac04daece18a6461
+    commands: [starship]
+  - repo: str4d/rage
+    version: v0.11.1
+    filename: rage-v0.11.1-x86_64-linux.tar.gz
+    sha256: b737607e430c0c92c3a566b82c7d7a3a051a10f5c0d8e5a82848c4572e31a8e9
+    commands: [rage, rage-keygen]
+    # The release asset links glibc and does not load on musl. Alpine packages the same version.
+    alpine:
+      package: rage
+
+  # From common .scripts/packages.json, which devcontainer-features dropped. common pins v2.1.5;
+  # v2.7.4 matches the Alpine package so both images run the same deno. From the release's .sha256sum.
+  - repo: denoland/deno
+    version: v2.7.4
+    filename: deno-x86_64-unknown-linux-gnu.zip
+    sha256: aef56590931e785af10bdab2077a2a01344b620c78b7086b88ebca73962ef25d
+    commands: [deno]
+    # glibc only, and gcompat cannot load it (__res_init, __memcpy_chk missing). Alpine packages a musl build.
+    alpine:
+      package: deno
+  # From the release's SHA256SUMS.
+  - repo: watchexec/watchexec
+    version: v2.2.1
+    filename: watchexec-2.2.1-x86_64-unknown-linux-musl.tar.xz
+    sha256: 74651d6f450bca5436eee35b7828f1b97388d3b3976da313db36e3a91f7ada44
+    commands: [watchexec]
